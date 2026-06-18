@@ -1,0 +1,82 @@
+.fade-in {
+  animation: fadeIn var(--transition-base) ease both;
+}
+
+.fade-in-up {
+  animation: fadeInUp var(--transition-slow) ease both;
+}
+
+.scale-in {
+  animation: scaleIn var(--transition-base) ease both;
+}
+
+.slide-in-right {
+  animation: slideInRight var(--transition-base) ease both;
+}
+
+.stagger > * {
+  animation: fadeInUp var(--transition-base) ease both;
+}
+
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 40ms; }
+.stagger > *:nth-child(3) { animation-delay: 80ms; }
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.stagger > *:nth-child(6) { animation-delay: 200ms; }
+.stagger > *:nth-child(7) { animation-delay: 240ms; }
+.stagger > *:nth-child(8) { animation-delay: 280ms; }
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* GPU-accelerated animations */
+.gpu {
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+
+/* Hover card lift */
+.card-lift {
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.card-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
