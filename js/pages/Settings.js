@@ -1,15 +1,38 @@
 import { DB } from '../db.js';
+import { Utils } from '../utils.js';
 import { showToast } from '../components/Toast.js';
 
 export function SettingsPage() {
+  function saveUserName() {
+    const name = document.getElementById('userNameInput').value.trim();
+    if (name) {
+      DB.saveProfile({ name });
+      showToast('Nombre guardado', 'success');
+    }
+  }
+
   return {
     render() {
       const hasData = DB.count('clients') > 0;
+      const profile = DB.getProfile();
 
       return `
         <div class="page-enter" style="max-width:640px">
           <div class="content-header" style="padding-top:0">
             <h1>Configuración</h1>
+          </div>
+
+          <div class="settings-section">
+            <h3>Perfil</h3>
+            <div class="card">
+              <div class="card-body">
+                <div class="form-group">
+                  <label>Tu nombre</label>
+                  <input type="text" id="userNameInput" class="form-input" value="${Utils.sanitize(profile.name)}" autofocus>
+                </div>
+                <button class="btn btn-primary" id="saveNameBtn" style="margin-top:8px">Guardar nombre</button>
+              </div>
+            </div>
           </div>
 
           <div class="settings-section">
@@ -46,6 +69,9 @@ export function SettingsPage() {
       `;
     },
     afterRender() {
+      document.getElementById('saveNameBtn')?.addEventListener('click', saveUserName);
+      document.getElementById('userNameInput')?.addEventListener('keydown', e => { if (e.key === 'Enter') saveUserName(); });
+
       document.getElementById('reseedBtn')?.addEventListener('click', async () => {
         localStorage.clear();
         DB.init();

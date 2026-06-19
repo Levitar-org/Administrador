@@ -3,7 +3,9 @@ class Store {
     this._state = {
       currentRoute: null,
       currentClient: null,
+      currentProject: null,
       clients: [],
+      projects: [],
       theme: localStorage.getItem('levitar_theme') || 'system',
       sidebarOpen: true
     };

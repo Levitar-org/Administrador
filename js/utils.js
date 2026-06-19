@@ -3,6 +3,25 @@ export const Utils = {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   },
 
+  today() {
+    return new Date().toISOString().split('T')[0];
+  },
+
+  isToday(dateStr) {
+    return new Date(dateStr).toDateString() === new Date().toDateString();
+  },
+
+  isThisWeek(dateStr) {
+    const now = new Date();
+    const d = new Date(dateStr);
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setHours(0, 0, 0, 0);
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 7);
+    return d >= startOfWeek && d < endOfWeek;
+  },
+
   formatDate(dateStr) {
     const d = new Date(dateStr);
     return d.toLocaleDateString('es-AR', {

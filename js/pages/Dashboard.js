@@ -3,192 +3,212 @@ import { Utils } from '../utils.js';
 import { router } from '../router.js';
 
 export function DashboardPage() {
-  const clients = DB.getAll('clients');
-  const campaigns = DB.getAll('campaigns');
-  const tasks = DB.getAll('tasks');
-  const events = DB.getAll('events');
-  const contents = DB.getAll('contents');
-
-  const activeCampaigns = campaigns.filter(c => c.status === 'active');
-  const pendingTasks = tasks.filter(t => t.status !== 'done');
-  const doneTasks = tasks.filter(t => t.status === 'done');
-  const upcomingEvents = events
-    .filter(e => new Date(e.date) > new Date())
-    .sort((a, b) => new Date(a.date) - new Date(b.date))
-    .slice(0, 5);
-
-  const recentContents = [...contents]
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .slice(0, 5);
-
-  // Monthly content chart (last 6 months)
-  const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-  const now = new Date();
-  const monthData = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const count = contents.filter(c => {
-      const cd = new Date(c.createdAt);
-      return `${cd.getFullYear()}-${String(cd.getMonth() + 1).padStart(2, '0')}` === key;
-    }).length;
-    monthData.push({ label: monthNames[d.getMonth()], count });
+  function getGreeting() {
+    const h = new Date().getHours();
+    if (h < 12) return 'Buenos días';
+    if (h < 19) return 'Buenas tardes';
+    return 'Buenas noches';
   }
-  const maxMonthCount = Math.max(...monthData.map(m => m.count), 1);
 
-  // Task donut
-  const taskTotal = tasks.length || 1;
-  const taskDonePct = Math.round((doneTasks.length / taskTotal) * 100);
-  const taskPendingPct = 100 - taskDonePct;
-  const donutR = 54;
-  const donutCirc = 2 * Math.PI * donutR;
-  const doneOffset = donutCirc * (1 - taskDonePct / 100);
+  function getData() {
+    const clients = DB.getAll('clients');
+    const projects = DB.getAll('projects');
+    const tasks = DB.getAll('tasks');
+    const objectives = DB.getAll('objectives');
+    const notes = DB.getAll('notes');
+    const events = DB.getAll('events');
+    const history = DB.getAll('history');
+    const activeProjects = projects.filter(p => !p.archived && p.status === 'active');
+    const pendingTasks = tasks.filter(t => t.status !== 'done');
+
+    const now = new Date();
+    const weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    const achievedThisWeek = objectives.filter(o =>
+      o.status === 'achieved' && new Date(o.updatedAt) >= weekAgo
+    );
+    const doneThisWeek = tasks.filter(t => {
+      const d = new Date(t.updatedAt || t.createdAt);
+      return d >= weekAgo && t.status === 'done';
+    });
+
+    const dayLabels = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+    const barData = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      const dayTasks = tasks.filter(t => {
+        const td = (t.updatedAt || t.createdAt || '').split('T')[0];
+        return td === dateStr;
+      });
+      barData.push({
+        label: dayLabels[6 - i],
+        done: dayTasks.filter(t => t.status === 'done').length,
+        created: dayTasks.length
+      });
+    }
+
+    const statusCounts = { active: 0, paused: 0, completed: 0 };
+    projects.forEach(p => {
+      if (p.status === 'active') statusCounts.active++;
+      else if (p.status === 'paused') statusCounts.paused++;
+      else if (p.status === 'completed') statusCounts.completed++;
+    });
+    const totalProjects = projects.length || 1;
+    const activePct = (statusCounts.active / totalProjects) * 100;
+    const pausedPct = (statusCounts.paused / totalProjects) * 100;
+    const completedPct = (statusCounts.completed / totalProjects) * 100;
+    const donutGradient = `conic-gradient(var(--success) 0% ${activePct}%, var(--warning) ${activePct}% ${activePct + pausedPct}%, var(--text-muted) ${activePct + pausedPct}% 100%)`;
+
+    return {
+      activeProjects, pendingTasks, achievedThisWeek, doneThisWeek, barData,
+      statusCounts, totalProjects: projects.length, donutGradient,
+      objectives: objectives.filter(o => o.status !== 'achieved').slice(0, 5),
+      personalTasks: tasks.filter(t => t.workspace === 'personal' && t.status !== 'done'),
+      todayEvents: events.filter(e => Utils.isToday(e.date)),
+      recentHistory: history.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 8),
+      profile: DB.getProfile()
+    };
+  }
+
+  function widget(title, content, extraClass) {
+    return `
+      <div class="dashboard-widget ${extraClass || ''}">
+        <h3 class="widget-title">${title}</h3>
+        <div class="widget-body">${content}</div>
+      </div>
+    `;
+  }
+
+  function empty() {
+    return '<p style="color:var(--text-muted);padding:8px 0">Sin datos</p>';
+  }
 
   return {
     render() {
+      const d = getData();
       return `
         <div class="page-enter">
           <div class="welcome-section">
-            <h1>Dashboard</h1>
-            <p>Resumen general de tu operación</p>
+            <h1>${Utils.sanitize(d.profile.name)}</h1>
+            <p>${getGreeting()}</p>
           </div>
 
-          <div class="stat-grid stagger">
-            <div class="stat-card">
-              <div class="stat-label">Clientes</div>
-              <div class="stat-value">${clients.length}</div>
-              <div class="stat-change" style="color:var(--text-muted)">${Utils.pluralize(clients.length, 'cliente activo', 'clientes activos')}</div>
+          <div class="kpi-simple">
+            <div class="kpi-card">
+              <div class="kpi-card-value">${d.activeProjects.length}</div>
+              <div class="kpi-card-label">Proyectos activos</div>
             </div>
-            <div class="stat-card">
-              <div class="stat-label">Campañas activas</div>
-              <div class="stat-value">${activeCampaigns.length}</div>
-              <div class="stat-change" style="color:var(--text-muted)">${Utils.pluralize(activeCampaigns.length, 'campaña en curso', 'campañas en curso')}</div>
+            <div class="kpi-card">
+              <div class="kpi-card-value">${d.pendingTasks.length}</div>
+              <div class="kpi-card-label">Tareas pendientes</div>
             </div>
-            <div class="stat-card">
-              <div class="stat-label">Tareas pendientes</div>
-              <div class="stat-value">${pendingTasks.length}</div>
-              <div class="stat-change" style="color:var(--text-muted)">${Utils.pluralize(pendingTasks.length, 'tarea por hacer', 'tareas por hacer')}</div>
+            <div class="kpi-card">
+              <div class="kpi-card-value">${d.achievedThisWeek.length}</div>
+              <div class="kpi-card-label">Objetivos logrados esta semana</div>
             </div>
-            <div class="stat-card">
-              <div class="stat-label">Contenido total</div>
-              <div class="stat-value">${contents.length}</div>
-              <div class="stat-change" style="color:var(--text-muted)">${Utils.pluralize(contents.length, 'pieza creada', 'piezas creadas')}</div>
+            <div class="kpi-card">
+              <div class="kpi-card-value">${d.doneThisWeek.length}</div>
+              <div class="kpi-card-label">Tareas completadas esta semana</div>
             </div>
           </div>
 
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:24px 0">
-            <div class="recent-activity">
-              <h3>Contenido por mes</h3>
-              <div style="padding:16px">
-                <svg width="100%" height="200" viewBox="0 0 400 200" style="display:block;max-width:400px;margin:0 auto">
-                  <rect x="0" y="0" width="400" height="200" fill="none"/>
-                  <line x1="30" y1="180" x2="400" y2="180" stroke="var(--border-light)" stroke-width="1"/>
-                  ${monthData.map((m, i) => {
-                    const barW = 50;
-                    const gap = 8;
-                    const x = 30 + i * (barW + gap) + gap;
-                    const barH = (m.count / maxMonthCount) * 140;
-                    const y = 180 - barH;
-                    return `
-                      <rect x="${x}" y="${y}" width="${barW}" height="${barH}" rx="4" fill="var(--primary)" style="transition:height 0.4s ease"/>
-                      <text x="${x + barW / 2}" y="195" text-anchor="middle" font-size="10" fill="var(--text-muted)">${m.label}</text>
-                      <text x="${x + barW / 2}" y="${y - 4}" text-anchor="middle" font-size="10" fill="var(--text-secondary)">${m.count}</text>
-                    `;
-                  }).join('')}
-                </svg>
-              </div>
-            </div>
-
-            <div class="recent-activity">
-              <h3>Completitud de tareas</h3>
-              <div style="padding:16px;display:flex;flex-direction:column;align-items:center">
-                <svg width="180" height="180" viewBox="0 0 120 120">
-                  <circle cx="60" cy="60" r="${donutR}" fill="none" stroke="var(--border-light)" stroke-width="12"/>
-                  <circle cx="60" cy="60" r="${donutR}" fill="none" stroke="var(--success)" stroke-width="12"
-                    stroke-dasharray="${donutCirc}" stroke-dashoffset="${doneOffset}"
-                    transform="rotate(-90, 60, 60)" style="transition:stroke-dashoffset 0.6s ease"/>
-                  <text x="60" y="55" text-anchor="middle" font-size="22" font-weight="700" fill="var(--text-primary)">${taskDonePct}%</text>
-                  <text x="60" y="72" text-anchor="middle" font-size="9" fill="var(--text-muted)">completado</text>
-                </svg>
-                <div style="display:flex;gap:24px;margin-top:12px;font-size:var(--text-sm)">
-                  <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:var(--success)"></span> ${doneTasks.length} hechas</span>
-                  <span style="display:flex;align-items:center;gap:4px"><span style="width:8px;height:8px;border-radius:50%;background:var(--text-muted)"></span> ${pendingTasks.length} pendientes</span>
+          <div class="dashboard-grid">
+            ${widget('Distribución de Proyectos', `
+              <div style="display:flex;align-items:center;gap:24px">
+                <div class="donut-chart" style="background:${d.donutGradient}">
+                  <div class="donut-hole">
+                    <span class="donut-hole-value">${d.totalProjects}</span>
+                    <span class="donut-hole-label">Total</span>
+                  </div>
+                </div>
+                <div class="donut-legend">
+                  <div class="donut-legend-item" data-nav="/clients"><span class="donut-legend-dot" style="background:var(--success)"></span>Activos (${d.statusCounts.active})</div>
+                  <div class="donut-legend-item" data-nav="/clients"><span class="donut-legend-dot" style="background:var(--warning)"></span>Pausados (${d.statusCounts.paused})</div>
+                  <div class="donut-legend-item" data-nav="/clients"><span class="donut-legend-dot" style="background:var(--text-muted)"></span>Completados (${d.statusCounts.completed})</div>
                 </div>
               </div>
-            </div>
-          </div>
+            `, 'donut-widget')}
 
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-            <div class="recent-activity">
-              <h3>Próximos eventos</h3>
-              ${upcomingEvents.length === 0 ? `
-                <div class="empty-state" style="padding:24px">
-                  <p style="color:var(--text-muted)">No hay eventos próximos</p>
-                </div>
-              ` : `
-                <div class="timeline">
-                  ${upcomingEvents.map(e => `
-                    <div class="timeline-item">
-                      <div class="timeline-item-time">${Utils.formatDate(e.date)}</div>
-                      <div class="timeline-item-content">${Utils.sanitize(e.title)}</div>
+            ${widget('Actividad Semanal', (() => {
+              const maxVal = Math.max(...d.barData.map(b => b.created), 1);
+              return `
+                <div class="bar-chart">
+                  ${d.barData.map(b => `
+                    <div class="bar-chart-column">
+                      <div style="font-size:9px;color:var(--text-muted);font-weight:600">${b.done}</div>
+                      <div class="bar-chart-bar done" style="height:${(b.done / maxVal) * 80}px"></div>
+                      <div class="bar-chart-bar created" style="height:${(b.created / maxVal) * 60}px"></div>
+                      <div class="bar-chart-label">${b.label}</div>
                     </div>
                   `).join('')}
                 </div>
-              `}
-            </div>
+                <div style="display:flex;gap:16px;margin-top:8px;font-size:var(--text-xs);color:var(--text-muted)">
+                  <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--success);vertical-align:middle;margin-right:4px"></span>Completadas</span>
+                  <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--accent-soft);vertical-align:middle;margin-right:4px"></span>Creadas</span>
+                </div>
+              `;
+            })(), 'barchart-widget')}
 
-            <div class="recent-activity">
-              <h3>Contenido reciente</h3>
-              ${recentContents.length === 0 ? `
-                <div class="empty-state" style="padding:24px">
-                  <p style="color:var(--text-muted)">No hay contenido aún</p>
-                </div>
-              ` : `
-                <div class="timeline">
-                  ${recentContents.map(c => `
-                    <div class="timeline-item">
-                      <div class="timeline-item-time">${Utils.getRelativeTime(c.createdAt)} · <span class="tag tag-${c.type}">${Utils.statusLabel(c.type)}</span></div>
-                      <div class="timeline-item-content">${Utils.sanitize(c.title)}</div>
+            ${widget('Progreso de Objetivos', (() => {
+              if (d.objectives.length === 0) return empty();
+              return d.objectives.map(o => {
+                const prog = DB.getObjectiveProgress(o.id);
+                const p = DB.getById('projects', o.projectId);
+                return `
+                  <div style="margin-bottom:10px;cursor:pointer" data-nav="/clients">
+                    <div style="display:flex;justify-content:space-between;font-size:var(--text-sm);margin-bottom:4px">
+                      <span>${Utils.truncate(Utils.sanitize(o.title), 35)}</span>
+                      <span style="color:var(--text-muted);font-size:var(--text-xs)">${prog.percent}%${p ? ' · ' + Utils.sanitize(p.name) : ''}</span>
                     </div>
-                  `).join('')}
+                    <div class="progress-bar" style="height:6px">
+                      <div class="progress-fill" style="width:${prog.percent}%;height:6px;background:${o.status === 'achieved' ? 'var(--success)' : 'var(--accent)'}"></div>
+                    </div>
+                  </div>
+                `;
+              }).join('');
+            })(), 'objectives-widget')}
+
+            ${widget('Hoy', (() => {
+              const tasks = d.personalTasks.slice(0, 4);
+              const events = d.todayEvents.slice(0, 4);
+              if (tasks.length === 0 && events.length === 0) return empty();
+              return `
+                ${events.map(e => `
+                  <div class="widget-item">
+                    <span class="widget-date">${Utils.formatTime(e.date)}</span>
+                    <span class="calendar-event publication" style="padding:2px 6px;font-size:10px">${Utils.truncate(Utils.sanitize(e.title), 30)}</span>
+                  </div>
+                `).join('')}
+                ${tasks.map(t => `
+                  <div class="widget-item" data-nav="${t.projectId ? '/clients' : '/personal/tasks'}">
+                    <span class="widget-bullet ${t.status}"></span>
+                    ${Utils.truncate(Utils.sanitize(t.title), 40)}
+                  </div>
+                `).join('')}
+              `;
+            })(), '')}
+
+            ${widget('Actividad Reciente', (() => {
+              if (d.recentHistory.length === 0) return empty();
+              return d.recentHistory.map(h => `
+                <div class="widget-item">
+                  <span class="widget-time">${Utils.getRelativeTime(h.createdAt)}</span>
+                  <span class="tag tag-${h.action}" style="font-size:9px;padding:1px 6px">${h.action}</span>
+                  <span style="color:var(--text-secondary);font-size:var(--text-xs)">${Utils.sanitize(h.entityType)}</span>
+                  ${h.metadata && h.metadata.name ? `<span style="margin-left:auto;font-size:var(--text-xs);color:var(--text-muted)">${Utils.truncate(Utils.sanitize(h.metadata.name), 15)}</span>` : ''}
                 </div>
-              `}
-            </div>
+              `).join('');
+            })(), '')}
           </div>
-
-          ${clients.length > 0 ? `
-            <div style="margin-top:24px">
-              <div class="recent-activity">
-                <h3>Clientes</h3>
-                <div class="card-grid stagger" style="margin-top:12px">
-                  ${clients.map(c => `
-                    <div class="client-card" data-client-id="${c.id}">
-                      <div class="client-card-header">
-                        <div class="client-card-avatar">${c.name.charAt(0)}</div>
-                        <div>
-                          <div class="client-card-name">${Utils.sanitize(c.name)}</div>
-                          <div class="client-card-industry">${Utils.sanitize(c.industry)}</div>
-                        </div>
-                      </div>
-                      <div class="client-card-body">
-                        <div class="services-list">
-                          ${(c.services || []).map(s => `<span class="service-tag">${Utils.sanitize(s)}</span>`).join('')}
-                        </div>
-                      </div>
-                    </div>
-                  `).join('')}
-                </div>
-              </div>
-            </div>
-          ` : ''}
         </div>
       `;
     },
     afterRender() {
-      document.querySelectorAll('.client-card').forEach(el => {
-        el.addEventListener('click', () => {
-          router.navigate(`/clients/${el.dataset.clientId}`);
-        });
+      document.querySelectorAll('[data-nav]').forEach(el => {
+        el.addEventListener('click', () => router.navigate(el.dataset.nav));
       });
     }
   };
